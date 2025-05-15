@@ -6,21 +6,21 @@ export GIT_BRANCH="main"
 export GIT_REPO="igroza/xray-vps-setup"
 
 # Check if script started as root
-if [ "$EUID" -ne 0 ]
-  then echo "Please run as root"
+if [ "$EUID" -ne 0 ]; then
+  echo "Please run as root"
   exit
 fi
 
-# Install idn
+# Install idn and jq
 apt-get update
-apt-get install idn jq -y # Добавляем jq для работы с JSON
+apt-get install idn jq -y
 
 # Read domain input
 read -ep "Enter your domain:"$'\n' input_domain
 
-export VLESS_DOMAIN=$(echo $input_domain | idn)
-export TEST_DOMAIN=$(nslookup $VLESS_DOMAIN | awk -F': ' 'NR==6 { print $2 } ')
-if [ -z "$TEST_DOMAIN" ]; then # Улучшенная проверка
+export VLESS_DOMAIN=$(echo "$input_domain" | idn)
+export TEST_DOMAIN=$(nslookup "$VLESS_DOMAIN" | awk -F': ' 'NR==6 { print $2 } ')
+if [ -z "$TEST_DOMAIN" ]; then
   read -ep "Are you sure? That domain has no DNS record. If you didn't add that you will have to restart xray and caddy by yourself [y/N]"$'\n' prompt_response
   if [[ "$prompt_response" =~ ^([yY]) ]]; then
     echo "Ok"
@@ -34,32 +34,27 @@ read -ep "Do you want to install marzban? [y/N] "$'\n' marzban_input
 
 if [[ "${marzban_input,,}" == "y" ]]; then
   read -ep "Do you want setup telegram bot for Marzban? [y/N] "$'\n' configure_tg_bot
-  if [[ ${configure_tg_bot,,} == "y" ]]; then
-    # Read bot token input
+  if [[ "${configure_tg_bot,,}" == "y" ]]; then
     read -ep "Enter your telegram bot token:"$'\n' input_telegram_api_token
-    export TELEGRAM_API_TOKEN=$(echo $input_telegram_api_token | idn)
+    export TELEGRAM_API_TOKEN=$(echo "$input_telegram_api_token" | idn)
 
-    # Read user id input
     read -ep "Enter your telegram user id, use @userinfobot:"$'\n' input_telegram_admin_id
-    export TELEGRAM_ADMIN_ID=$(echo $input_telegram_admin_id | idn)
+    export TELEGRAM_ADMIN_ID=$(echo "$input_telegram_admin_id" | idn)
   fi
 fi
 
-# --- Определяем порты для дополнительных профилей ---
 export PORT_VLESS_XHTTP_REALITY=20001
 export PORT_VLESS_H2_REALITY=20002
 export PORT_VLESS_TCP_REALITY_EXTRA=20003
 export PORT_VLESS_GRPC_REALITY=20004
-export PORT_VLESS_WS_TLS=443 # Стандартный, но с оговорками для non-Marzban
+export PORT_VLESS_WS_TLS=443
 export PORT_VLESS_KCP_NOTLS=8080
 export PORT_VLESS_WS_NOTLS=8081
 export PORT_TROJAN_WS_NOTLS=8082
 export PORT_VLESS_TCP_HEADER_NOTLS=20005
 
-# Custom xray port (основной)
 read -ep "Enter your custom xray port for main VLESS REALITY. Default 433, can't use ports: 80, $PORT_VLESS_WS_TLS, $PORT_VLESS_XHTTP_REALITY, $PORT_VLESS_H2_REALITY, $PORT_VLESS_TCP_REALITY_EXTRA, $PORT_VLESS_GRPC_REALITY, $PORT_VLESS_KCP_NOTLS, $PORT_VLESS_WS_NOTLS, $PORT_TROJAN_WS_NOTLS, $PORT_VLESS_TCP_HEADER_NOTLS, 4123:"$'\n' input_xray_port
 
-# Проверка на конфликты портов для основного XRAY_PORT
 while [[ "$input_xray_port" == "80" || \
          "$input_xray_port" == "$PORT_VLESS_WS_TLS" || \
          "$input_xray_port" == "$PORT_VLESS_XHTTP_REALITY" || \
@@ -81,8 +76,7 @@ else
 fi
 
 read -ep "Do you want to configure server security? Do this on first run only. [y/N] "$'\n' configure_ssh_input
-if [[ ${configure_ssh_input,,} == "y" ]]; then
-  # Read SSH port
+if [[ "${configure_ssh_input,,}" == "y" ]]; then
   read -ep "Enter SSH port. Default 22, can't use ports: 80, $XRAY_PORT, $PORT_VLESS_WS_TLS, $PORT_VLESS_XHTTP_REALITY, $PORT_VLESS_H2_REALITY, $PORT_VLESS_TCP_REALITY_EXTRA, $PORT_VLESS_GRPC_REALITY, $PORT_VLESS_KCP_NOTLS, $PORT_VLESS_WS_NOTLS, $PORT_TROJAN_WS_NOTLS, $PORT_VLESS_TCP_HEADER_NOTLS, 4123:"$'\n' input_ssh_port
 
   while [[ "$input_ssh_port" == "80" || \
@@ -99,10 +93,9 @@ if [[ ${configure_ssh_input,,} == "y" ]]; then
            "$input_ssh_port" == "4123" ]]; do
     read -ep "Error: Port $input_ssh_port is reserved or conflicts with other services. Please choose a different SSH port:"$'\n' input_ssh_port
   done
-  # Read SSH Pubkey
   read -ep "Enter SSH public key:"$'\n' input_ssh_pbk
   echo "$input_ssh_pbk" > ./test_pbk
-  if ! ssh-keygen -l -f ./test_pbk > /dev/null 2>&1; then # Улучшенная проверка ключа
+  if ! ssh-keygen -l -f ./test_pbk > /dev/null 2>&1; then
     echo "Can't verify the public key. Try again and make sure to include 'ssh-rsa' or 'ssh-ed25519' followed by 'user@pcname' at the end of the file."
     rm ./test_pbk
     exit 1
@@ -112,8 +105,7 @@ fi
 
 read -ep "Do you want to install WARP and use it on russian websites? [y/N] "$'\n' configure_warp_input
 
-# Check congestion protocol
-if sysctl net.ipv4.tcp_congestion_control | grep -q bbr; then # -q для тишины
+if sysctl net.ipv4.tcp_congestion_control | grep -q bbr; then
     echo "BBR is already used"
 else
     echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
@@ -126,12 +118,11 @@ yq_install() {
   wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && chmod +x /usr/bin/yq
 }
 
-if ! command -v yq &> /dev/null; then # Проверка наличия yq
+if ! command -v yq &> /dev/null; then
     yq_install
 fi
 
 docker_install() {
-  # Использование официального скрипта Docker
   curl -fsSL https://get.docker.com -o get-docker.sh
   sh get-docker.sh
   rm get-docker.sh
@@ -141,20 +132,18 @@ if ! command -v docker &> /dev/null; then
     docker_install
 fi
 
-# Generate values for XRay
 export SSH_USER=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 8; echo)
 export SSH_USER_PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 13; echo)
 export SSH_PORT=${input_ssh_port:-22}
-export ROOT_LOGIN="yes" # This will be set to "no" later if security is configured
+export ROOT_LOGIN="yes"
 export IP_CADDY=$(hostname -I | cut -d' ' -f1)
-export CADDY_BASIC_AUTH=$(docker run --rm caddy caddy hash-password --plaintext $SSH_USER_PASS)
+export CADDY_BASIC_AUTH=$(docker run --rm caddy caddy hash-password --plaintext "$SSH_USER_PASS")
 export XRAY_PIK=$(docker run --rm ghcr.io/xtls/xray-core x25519 | head -n1 | cut -d' ' -f 3)
-export XRAY_PBK=$(docker run --rm ghcr.io/xtls/xray-core x25519 -i $XRAY_PIK | tail -1 | cut -d' ' -f 3)
+export XRAY_PBK=$(docker run --rm ghcr.io/xtls/xray-core x25519 -i "$XRAY_PIK" | tail -1 | cut -d' ' -f 3)
 export XRAY_SID=$(openssl rand -hex 8)
 export XRAY_UUID=$(docker run --rm ghcr.io/xtls/xray-core uuid)
-export TROJAN_FALLBACK_PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16; echo) # Пароль для Trojan, если не Marzban
+export TROJAN_FALLBACK_PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16; echo)
 
-# --- Путь к конфигурации Xray (будет определен в xray_setup) ---
 export CURRENT_XRAY_CONFIG_PATH=""
 
 xray_setup() {
@@ -165,7 +154,7 @@ xray_setup() {
     export MARZBAN_PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 42; echo)
     export MARZBAN_PATH=$(openssl rand -hex 21)
     export MARZBAN_SUB_PATH=$(openssl rand -hex 21)
-    wget -qO- https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/compose | envsubst > ./docker-compose.yml
+    wget -qO- "https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/compose" | envsubst > ./docker-compose.yml
     yq eval \
     '.services.marzban.image = "gozargah/marzban:v0.8.4" |
      .services.marzban.restart = "always" |
@@ -176,15 +165,15 @@ xray_setup() {
      .services.marzban.volumes[2] = "./marzban/templates:/var/lib/marzban/templates" |
      .services.caddy.volumes[2] = "./marzban_lib:/run/marzban"' -i /opt/xray-vps-setup/docker-compose.yml
     mkdir -p marzban caddy
-    wget -qO- https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/marzban | envsubst > ./marzban/.env
+    wget -qO- "https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/marzban" | envsubst > ./marzban/.env
     mkdir -p /opt/xray-vps-setup/marzban/templates/home
-    wget -qO- https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/confluence_page | envsubst > ./marzban/templates/home/index.html
+    wget -qO- "https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/confluence_page" | envsubst > ./marzban/templates/home/index.html
     export CADDY_REVERSE="reverse_proxy * unix//run/marzban/marzban.socket"
     wget -qO- "https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/caddy" | envsubst > ./caddy/Caddyfile
     wget -qO- "https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/xray" | envsubst > ./marzban/xray_config.json
     CURRENT_XRAY_CONFIG_PATH="/opt/xray-vps-setup/marzban/xray_config.json"
   else
-    wget -qO- https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/compose | envsubst > ./docker-compose.yml
+    wget -qO- "https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/compose" | envsubst > ./docker-compose.yml
     mkdir -p /opt/xray-vps-setup/caddy/templates
     yq eval \
     '.services.xray.image = "ghcr.io/xtls/xray-core:25.1.1" |
@@ -192,7 +181,7 @@ xray_setup() {
     .services.xray.network_mode = "host" |
     .services.caddy.volumes[2] = "./caddy/templates:/srv" |
     .services.xray.volumes[0] = "./xray:/etc/xray"' -i /opt/xray-vps-setup/docker-compose.yml
-    wget -qO- https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/confluence_page | envsubst > ./caddy/templates/index.html
+    wget -qO- "https://raw.githubusercontent.com/$GIT_REPO/refs/heads/$GIT_BRANCH/templates_for_script/confluence_page" | envsubst > ./caddy/templates/index.html
     export CADDY_REVERSE="root * /srv
     file_server"
     mkdir -p xray caddy
@@ -201,7 +190,6 @@ xray_setup() {
     CURRENT_XRAY_CONFIG_PATH="/opt/xray-vps-setup/xray/config.json"
   fi
 
-  # --- Добавление дополнительных профилей Xray ---
   echo "Adding additional Xray inbounds..."
 
   local vless_client_settings_json='[]'
@@ -212,7 +200,6 @@ xray_setup() {
     trojan_client_settings_json='[{"password": "'"$TROJAN_FALLBACK_PASS"'"}]'
   fi
 
-  # 1. VLESS XHTTP REALITY
   yq eval -i '.inbounds += [{
     "tag": "VLESS XHTTP REALITY", "listen": "0.0.0.0", "port": env(PORT_VLESS_XHTTP_REALITY), "protocol": "vless",
     "settings": { "clients": '$vless_client_settings_json', "decryption": "none" },
@@ -222,7 +209,6 @@ xray_setup() {
     }, "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
   }]' "$CURRENT_XRAY_CONFIG_PATH"
 
-  # 2. VLESS H2 REALITY
   yq eval -i '.inbounds += [{
     "tag": "VLESS H2 REALITY", "listen": "0.0.0.0", "port": env(PORT_VLESS_H2_REALITY), "protocol": "vless",
     "settings": { "clients": '$vless_client_settings_json', "decryption": "none" },
@@ -232,7 +218,6 @@ xray_setup() {
     }, "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
   }]' "$CURRENT_XRAY_CONFIG_PATH"
 
-  # 3. VLESS TCP REALITY (дополнительный)
   yq eval -i '.inbounds += [{
     "tag": "VLESS TCP REALITY Extra", "listen": "0.0.0.0", "port": env(PORT_VLESS_TCP_REALITY_EXTRA), "protocol": "vless",
     "settings": { "clients": '$vless_client_settings_json', "decryption": "none" },
@@ -242,7 +227,6 @@ xray_setup() {
     }, "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
   }]' "$CURRENT_XRAY_CONFIG_PATH"
 
-  # 4. VLESS GRPC REALITY
   yq eval -i '.inbounds += [{
     "tag": "VLESS GRPC REALITY", "listen": "0.0.0.0", "port": env(PORT_VLESS_GRPC_REALITY), "protocol": "vless",
     "settings": { "clients": '$vless_client_settings_json', "decryption": "none" },
@@ -252,11 +236,6 @@ xray_setup() {
     }, "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
   }]' "$CURRENT_XRAY_CONFIG_PATH"
 
-  # 5. VLESS WS TLS
-  # ВНИМАНИЕ: Для non-Marzban установки, пути к сертификатам могут быть неверны.
-  # Xray ожидает сертификаты по указанным путям ВНУТРИ своего окружения (контейнера).
-  # Стандартный Caddy (без Marzban) хранит сертификаты в другом месте.
-  # Этот профиль может не работать "из коробки" без Marzban или потребует донастройки.
   local cert_path="/var/lib/marzban/certs/fullchain.pem"
   local key_path="/var/lib/marzban/certs/key.pem"
   if [[ "${marzban_input,,}" != "y" ]]; then
@@ -272,7 +251,6 @@ xray_setup() {
     }, "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
   }]' "$CURRENT_XRAY_CONFIG_PATH"
 
-  # 6. VLESS KCP NoTLS
   yq eval -i '.inbounds += [{
     "tag": "VLESS KCP NoTLS", "listen": "0.0.0.0", "port": env(PORT_VLESS_KCP_NOTLS), "protocol": "vless",
     "settings": { "clients": '$vless_client_settings_json', "decryption": "none" },
@@ -281,7 +259,6 @@ xray_setup() {
     }, "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
   }]' "$CURRENT_XRAY_CONFIG_PATH"
 
-  # 7. VLESS WS NoTLS
   yq eval -i '.inbounds += [{
     "tag": "VLESS WS NoTLS", "listen": "0.0.0.0", "port": env(PORT_VLESS_WS_NOTLS), "protocol": "vless",
     "settings": { "clients": '$vless_client_settings_json', "decryption": "none" },
@@ -289,7 +266,6 @@ xray_setup() {
     "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
   }]' "$CURRENT_XRAY_CONFIG_PATH"
 
-  # 8. TROJAN WS NoTLS
   yq eval -i '.inbounds += [{
     "tag": "TROJAN WS NOTLS", "listen": "0.0.0.0", "port": env(PORT_TROJAN_WS_NOTLS), "protocol": "trojan",
     "settings": { "clients": '$trojan_client_settings_json' },
@@ -297,7 +273,6 @@ xray_setup() {
     "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] }
   }]' "$CURRENT_XRAY_CONFIG_PATH"
 
-  # 9. VLESS TCP Header NoTLS
   yq eval -i '.inbounds += [{
     "tag": "VLESS TCP Header NoTLS", "listen": "0.0.0.0", "port": env(PORT_VLESS_TCP_HEADER_NOTLS), "protocol": "vless",
     "settings": { "clients": '$vless_client_settings_json', "decryption": "none" },
@@ -310,7 +285,6 @@ xray_setup() {
 }
 
 sshd_edit() {
-  # Ensure that SSH_PORT is defined (it's set earlier based on input_ssh_port or default 22)
   grep -rl "Port " /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ | xargs -r --no-run-if-empty sed -i -e "/^Port /c\Port $SSH_PORT"
   grep -rl "PasswordAuthentication " /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ | xargs -r --no-run-if-empty sed -i -e "/^PasswordAuthentication /c\PasswordAuthentication no"
   grep -rl "PermitRootLogin " /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ | xargs -r --no-run-if-empty sed -i -e "/^PermitRootLogin /c\PermitRootLogin no"
@@ -318,17 +292,17 @@ sshd_edit() {
 }
 
 add_user() {
-  useradd -m -s /bin/bash $SSH_USER # -m to create home dir, -s for shell
-  usermod -aG sudo $SSH_USER
+  useradd -m -s /bin/bash "$SSH_USER"
+  usermod -aG sudo "$SSH_USER"
   echo "$SSH_USER:$SSH_USER_PASS" | chpasswd
-  mkdir -p /home/$SSH_USER/.ssh
-  touch /home/$SSH_USER/.ssh/authorized_keys
-  echo "$input_ssh_pbk" >> /home/$SSH_USER/.ssh/authorized_keys
-  chmod 700 /home/$SSH_USER/.ssh/
-  chmod 600 /home/$SSH_USER/.ssh/authorized_keys
-  chown $SSH_USER:$SSH_USER -R /home/$SSH_USER/.ssh # Only .ssh dir
-  chown $SSH_USER:$SSH_USER /home/$SSH_USER # Home dir itself
-  usermod -aG docker $SSH_USER
+  mkdir -p "/home/$SSH_USER/.ssh"
+  touch "/home/$SSH_USER/.ssh/authorized_keys"
+  echo "$input_ssh_pbk" >> "/home/$SSH_USER/.ssh/authorized_keys"
+  chmod 700 "/home/$SSH_USER/.ssh/"
+  chmod 600 "/home/$SSH_USER/.ssh/authorized_keys"
+  chown "$SSH_USER:$SSH_USER" -R "/home/$SSH_USER/.ssh"
+  chown "$SSH_USER:$SSH_USER" "/home/$SSH_USER"
+  usermod -aG docker "$SSH_USER"
 }
 
 debconf-set-selections <<EOF
@@ -336,69 +310,58 @@ iptables-persistent iptables-persistent/autosave_v4 boolean true
 iptables-persistent iptables-persistent/autosave_v6 boolean true
 EOF
 
-# Configure iptables
 edit_iptables() {
   apt-get install iptables-persistent netfilter-persistent -y
-  iptables -F INPUT # Flush existing rules to avoid duplicates on re-run attempts (though script is for first run)
-  iptables -P INPUT DROP # Set default policy to DROP first
+  iptables -F INPUT
+  iptables -P INPUT DROP
   iptables -A INPUT -i lo -j ACCEPT
   iptables -A INPUT -p icmp -j ACCEPT
   iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
-  iptables -A INPUT -p tcp -m state --state NEW -m tcp --dport $SSH_PORT -j ACCEPT
+  iptables -A INPUT -p tcp -m state --state NEW -m tcp --dport "$SSH_PORT" -j ACCEPT
   iptables -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $XRAY_PORT -j ACCEPT # Main VLESS REALITY
+  iptables -A INPUT -p tcp -m tcp --dport "$XRAY_PORT" -j ACCEPT
 
-  # --- Открываем порты для дополнительных профилей ---
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_XHTTP_REALITY -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_H2_REALITY -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_TCP_REALITY_EXTRA -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_GRPC_REALITY -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_WS_TLS -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_KCP_NOTLS -j ACCEPT # KCP TCP part (if any, usually UDP)
-  iptables -A INPUT -p udp -m udp --dport $PORT_VLESS_KCP_NOTLS -j ACCEPT # KCP UDP part
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_WS_NOTLS -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_TROJAN_WS_NOTLS -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_TCP_HEADER_NOTLS -j ACCEPT
-  # --- Конец правил для дополнительных профилей ---
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_XHTTP_REALITY" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_H2_REALITY" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_TCP_REALITY_EXTRA" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_GRPC_REALITY" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_WS_TLS" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_KCP_NOTLS" -j ACCEPT
+  iptables -A INPUT -p udp -m udp --dport "$PORT_VLESS_KCP_NOTLS" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_WS_NOTLS" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_TROJAN_WS_NOTLS" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_TCP_HEADER_NOTLS" -j ACCEPT
 
-  # iptables -A OUTPUT -o lo -j ACCEPT # Not strictly needed as OUTPUT is usually ACCEPT by default
   netfilter-persistent save
 }
 
-xray_setup # Вызываем xray_setup перед настройкой SSH и iptables
+xray_setup
 
-if [[ ${configure_ssh_input,,} == "y" ]]; then
+if [[ "${configure_ssh_input,,}" == "y" ]]; then
   sshd_edit
   add_user
-  edit_iptables # iptables настраивается только если выбрана безопасность SSH
+  edit_iptables
   echo "New user for ssh: $SSH_USER, password for user: $SSH_USER_PASS. New port for SSH: $SSH_PORT."
-elif [[ ${configure_ssh_input,,} != "y" ]]; then
-  # Если безопасность SSH не настраивается, все равно откроем порты для Xray, если iptables уже используется
-  # Это предосторожность, если iptables уже был настроен ранее.
-  # Но если iptables не настроен (ACCEPT all), эти правила не навредят.
+elif [[ "${configure_ssh_input,,}" != "y" ]]; then
   echo "SSH security not configured. Ensuring Xray ports are open if iptables is active..."
-  # Попытка установить iptables-persistent, если его нет, для сохранения правил.
   if ! dpkg -s iptables-persistent &> /dev/null; then
     apt-get install iptables-persistent netfilter-persistent -y
   fi
-  # Добавляем только порты Xray, предполагая, что SSH уже работает.
   iptables -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $XRAY_PORT -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_XHTTP_REALITY -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_H2_REALITY -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_TCP_REALITY_EXTRA -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_GRPC_REALITY -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_WS_TLS -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_KCP_NOTLS -j ACCEPT
-  iptables -A INPUT -p udp -m udp --dport $PORT_VLESS_KCP_NOTLS -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_WS_NOTLS -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_TROJAN_WS_NOTLS -j ACCEPT
-  iptables -A INPUT -p tcp -m tcp --dport $PORT_VLESS_TCP_HEADER_NOTLS -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$XRAY_PORT" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_XHTTP_REALITY" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_H2_REALITY" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_TCP_REALITY_EXTRA" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_GRPC_REALITY" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_WS_TLS" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_KCP_NOTLS" -j ACCEPT
+  iptables -A INPUT -p udp -m udp --dport "$PORT_VLESS_KCP_NOTLS" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_WS_NOTLS" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_TROJAN_WS_NOTLS" -j ACCEPT
+  iptables -A INPUT -p tcp -m tcp --dport "$PORT_VLESS_TCP_HEADER_NOTLS" -j ACCEPT
   netfilter-persistent save
 fi
 
-
-# WARP Install function
 warp_install() {
   apt install gpg -y
   echo "If this fails then warp won't be added to routing and everything will work without it"
@@ -407,9 +370,9 @@ warp_install() {
   apt update
   apt install cloudflare-warp -y
 
-  if ! warp-cli --accept-tos registration new; then # Улучшенная регистрация
+  if ! warp-cli --accept-tos registration new; then
     echo "Couldn't register with WARP. WARP will not be configured."
-    return 1 # Выход из функции, но не из скрипта
+    return 1
   fi
 
   warp-cli mode proxy
@@ -419,7 +382,6 @@ warp_install() {
     return 1
   fi
 
-  # Путь к конфигу уже определен в CURRENT_XRAY_CONFIG_PATH
   if [ -z "$CURRENT_XRAY_CONFIG_PATH" ]; then
       echo "Error: Xray config path not set. Cannot configure WARP."
       return 1
@@ -430,19 +392,18 @@ warp_install() {
   "$CURRENT_XRAY_CONFIG_PATH"
   yq eval -i \
   '.routing.rules += {"type": "field", "outboundTag": "warp", "domain": ["geosite:category-ru", "regexp:.*\\.xn--$", "regexp:.*\\.ru$", "regexp:.*\\.su$"]}' \
-  "$CURRENT_XRAY_CONFIG_PATH" # Добавлен "type": "field" для совместимости с новыми версиями Xray
+  "$CURRENT_XRAY_CONFIG_PATH"
 
-  # Перезапускаем docker compose, чтобы Xray подхватил изменения
   echo "Restarting Xray services to apply WARP configuration..."
-  cd /opt/xray-vps-setup # Убедимся, что мы в правильной директории
+  cd /opt/xray-vps-setup
   docker compose down && docker compose up -d
   echo "WARP configured and Xray restarted."
 }
 
 end_script() {
-  cd /opt/xray-vps-setup # Убедимся, что мы в правильной директории
-  docker run -v "$(pwd)/caddy/Caddyfile:/Caddyfile" --rm caddy caddy fmt --overwrite /Caddyfile # Используем pwd для корректного пути
-  docker compose up -d # Запускаем или перезапускаем сервисы
+  cd /opt/xray-vps-setup
+  docker run -v "$(pwd)/caddy/Caddyfile:/Caddyfile" --rm caddy caddy fmt --overwrite /Caddyfile
+  docker compose up -d
 
   echo ""
   echo "===================================================================="
@@ -491,7 +452,7 @@ end_script() {
     echo "   Clipboard: vless://$XRAY_UUID@$VLESS_DOMAIN:$PORT_VLESS_TCP_REALITY_EXTRA?type=tcp&security=reality&pbk=$XRAY_PBK&fp=chrome&sni=$VLESS_DOMAIN&sid=$XRAY_SID&spx=%2Ftcp-reality"
     echo "4. VLESS GRPC REALITY:"
     echo "   Port: $PORT_VLESS_GRPC_REALITY, ServiceName: grpc-reality, SNI: $VLESS_DOMAIN, SpiderX: /grpc-reality"
-    echo "   Clipboard: vless://$XRAY_UUID@$VLESS_DOMAIN:$PORT_VLESS_GRPC_REALITY?type=grpc&security=reality&pbk=$XRAY_PBK&fp=chrome&sni=$VLESS_DOMAIN&sid=$XRAY_SID&serviceName=grpc-reality&path=%2Fgrpc-reality"
+    echo "   Clipboard: vless://$XRAY_UUID@$VLESS_DOMAIN:$PORT_VLESS_GRPC_REALITY?type=grpc&security=reality&pbk=$XRAY_PBK&fp=chrome&sni=$VLESS_DOMAIN&sid=$XRAY_SID&serviceName=grpc-reality&path=%2Fgrpc-reality" # path был указан как spiderx, для grpc обычно serviceName
     echo "5. VLESS WS TLS:"
     echo "   Port: $PORT_VLESS_WS_TLS, Path: /vless-ws-tls, SNI: $VLESS_DOMAIN, Security: tls"
     echo "   Clipboard: vless://$XRAY_UUID@$VLESS_DOMAIN:$PORT_VLESS_WS_TLS?type=ws&security=tls&sni=$VLESS_DOMAIN&fp=chrome&path=%2Fvless-ws-tls&host=$VLESS_DOMAIN"
@@ -511,22 +472,18 @@ end_script() {
   echo "===================================================================="
 }
 
-# ---- Main script execution flow ----
+end_script
+set +e
 
-end_script # Запускаем docker compose up -d в конце, после всех конфигураций
-set +e # Отключаем немедленный выход при ошибке для WARP, так как он опционален
-
-if [[ ${configure_warp_input,,} == "y" ]]; then
+if [[ "${configure_warp_input,,}" == "y" ]]; then
   echo "Attempting to install and configure WARP..."
   if warp_install; then
     echo "WARP installation and configuration successful."
   else
     echo "WARP installation or configuration failed. Continuing without WARP."
-    # Если WARP не удалось настроить, Xray мог не перезапуститься с финальной конфигурацией.
-    # Перезапустим его еще раз, чтобы убедиться, что все inbounds из xray_setup активны.
     echo "Ensuring Xray services are up with latest configuration..."
     cd /opt/xray-vps-setup
-    docker compose up -d --force-recreate # --force-recreate на случай, если контейнер не обновился
+    docker compose up -d --force-recreate
   fi
 fi
 
